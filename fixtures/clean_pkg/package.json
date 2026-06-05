@@ -1,0 +1,12 @@
+{
+  "name": "well-behaved-helper",
+  "version": "1.0.0",
+  "description": "Demo fixture: a clean package.json with pinned deps and a lockfile.",
+  "scripts": {
+    "test": "echo no tests"
+  },
+  "dependencies": {
+    "express": "4.18.2",
+    "lodash": "4.17.21"
+  }
+}

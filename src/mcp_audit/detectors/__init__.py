@@ -2,12 +2,14 @@
 from .base import Confidence, Detector, Finding, ScanContext, Severity, ToolInfo
 from .command_injection import CommandInjectionDetector
 from .secrets import SecretsDetector
+from .supply_chain import SupplyChainDetector
 from .tool_poisoning import ToolPoisoningDetector
 
 ALL_DETECTORS: list[Detector] = [
     ToolPoisoningDetector(),
     SecretsDetector(),
     CommandInjectionDetector(),
+    SupplyChainDetector(),
 ]
 
 __all__ = [

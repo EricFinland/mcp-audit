@@ -6,9 +6,11 @@ from mcp_audit.detectors import (
 )
 from mcp_audit.detectors.command_injection import CommandInjectionDetector
 from mcp_audit.detectors.secrets import SecretsDetector
+from mcp_audit.detectors.supply_chain import SupplyChainDetector
 from mcp_audit.detectors.tool_poisoning import ToolPoisoningDetector
 
-FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "evil_server.py"
+FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
+FIXTURE = FIXTURES / "evil_server.py"
 
 
 def _ids(findings):
@@ -46,3 +48,19 @@ def test_command_injection_ast_on_fixture():
     ctx = ScanContext(server_label="fixture", source_files=[FIXTURE])
     findings = CommandInjectionDetector().scan(ctx)
     assert any(f.id == "MCP-AUDIT-D3-CMDINJ" for f in findings)
+
+
+def test_supply_chain_fires_on_bad_package():
+    ctx = ScanContext(server_label="fixture",
+                      config_files=[FIXTURES / "evil_pkg" / "package.json"])
+    ids = _ids(SupplyChainDetector().scan(ctx))
+    assert "MCP-AUDIT-D4-INSTALL-FETCH-EXEC" in ids  # postinstall curl | sh
+    assert "MCP-AUDIT-D4-UNPINNED" in ids            # ^4.18.0 / latest
+    assert "MCP-AUDIT-D4-TYPOSQUAT" in ids           # 'expres' vs 'express'
+    assert "MCP-AUDIT-D4-NO-LOCKFILE" in ids
+
+
+def test_supply_chain_quiet_on_clean_package():
+    ctx = ScanContext(server_label="clean",
+                      config_files=[FIXTURES / "clean_pkg" / "package.json"])
+    assert SupplyChainDetector().scan(ctx) == []
