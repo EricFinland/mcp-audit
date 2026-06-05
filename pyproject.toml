@@ -25,6 +25,12 @@ mcp-audit = "mcp_audit.cli:main"
 [project.urls]
 Homepage = "https://github.com/EricFinland/mcp-audit"
 
+[tool.pytest.ini_options]
+# Owning this config stops pytest from inheriting a parent directory's ini (which set an
+# unknown asyncio_mode option and emitted a warning on every run).
+testpaths = ["tests"]
+addopts = "-q"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
