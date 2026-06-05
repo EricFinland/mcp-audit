@@ -14,6 +14,12 @@ def _json(text: str) -> dict:
     return json.loads(text[text.index("{"): text.rindex("}") + 1])
 
 
+def test_version_flag():
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0
+    assert "mcp-audit" in result.stdout
+
+
 def test_scan_requires_a_target():
     result = runner.invoke(app, ["scan"])
     assert result.exit_code == 2

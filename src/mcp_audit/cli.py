@@ -23,6 +23,22 @@ app = typer.Typer(add_completion=False, help="Local-first, pre-install security 
 _BASELINE_DIR = Path.home() / ".mcp-audit" / "baselines"
 
 
+@app.callback(invoke_without_command=True)
+def _root(
+    ctx: typer.Context,
+    version: bool = typer.Option(
+        False, "--version", help="Show the mcp-audit version and exit.", is_eager=True),
+):
+    """Local-first, pre-install security auditor for MCP servers."""
+    if version:
+        from . import __version__
+        typer.echo(f"mcp-audit {__version__}")
+        raise typer.Exit()
+    if ctx.invoked_subcommand is None:
+        typer.echo(ctx.get_help())
+        raise typer.Exit()
+
+
 def _gather(source, stdio, http, git) -> ScanContext:
     """Build a ScanContext from whichever input was supplied."""
     from . import sources as src
