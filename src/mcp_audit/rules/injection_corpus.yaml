@@ -1,0 +1,52 @@
+# mcp-audit prompt-injection corpus (v1) - OWASP MCP06 (Intent Flow Subversion)
+#
+# Signatures of text that tries to subvert the agent's intent: system-prompt overrides, role
+# hijacks/jailbreaks, prompt-leak attempts, and role-delimiter injection. The D6 detector matches
+# these against model-facing text (tool + parameter descriptions) and config files. Distinct from
+# the D1 structural poisoning checks. Extend without a release: edit this file, drop a
+# rules/injection_corpus.yaml in the working dir, or point MCP_AUDIT_INJECTION at a file.
+#
+# Each rule: id, severity, confidence, title, a case-insensitive Python regex, and recommendation.
+
+version: 1
+rules:
+  - id: INJ-SYSTEM-OVERRIDE
+    severity: HIGH
+    confidence: medium
+    title: Attempt to override the system prompt or instructions
+    pattern: '\b(ignore|disregard|forget|override|bypass)\b[^.\n]{0,40}\b(system prompt|system message|previous instructions|prior instructions|your instructions|guidelines|safety rules|restrictions)\b'
+    recommendation: >-
+      Text instructs the model to discard its governing instructions, the core of an intent-flow
+      attack. A tool description should describe a tool, not reprogram the agent.
+
+  - id: INJ-ROLE-HIJACK
+    severity: HIGH
+    confidence: medium
+    title: Role hijack or jailbreak persona
+    pattern: '\b(you are (now )?|act as|pretend (that )?you are|enable)[^.\n]{0,40}(dan\b|developer mode|jailbroken|unrestricted|no (restrictions|rules|guidelines)|without (any )?(restrictions|filter|guardrails))'
+    recommendation: >-
+      Text tries to switch the model into an unrestricted persona. Treat the server as hostile.
+
+  - id: INJ-PROMPT-LEAK
+    severity: MEDIUM
+    confidence: medium
+    title: Attempt to leak the system prompt
+    pattern: '\b(reveal|repeat|print|show|output|disclose|tell me)\b[^.\n]{0,40}\b(system prompt|initial instructions|your instructions|the (above|prior) prompt|everything above)\b'
+    recommendation: >-
+      Text tries to exfiltrate the hidden system prompt. A benign tool has no reason to ask for it.
+
+  - id: INJ-DELIMITER
+    severity: MEDIUM
+    confidence: medium
+    title: Prompt-delimiter or role-marker injection
+    pattern: '</?(system|assistant|user|instructions?)\s*>|\[/?INST\]|<\|im_(start|end)\|>|###\s*(system|instruction)'
+    recommendation: >-
+      Text embeds chat/role delimiters to forge a new turn or system message. Strip and reject.
+
+  - id: INJ-NEW-INSTRUCTIONS
+    severity: MEDIUM
+    confidence: medium
+    title: Injected replacement instructions
+    pattern: '\b((new|updated|real|actual|secret) instructions?\s*:|from now on,? you (will|must|should|are))'
+    recommendation: >-
+      Text asserts a new set of instructions for the model to follow. Review intent; do not obey.
