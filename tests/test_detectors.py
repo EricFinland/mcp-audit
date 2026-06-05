@@ -6,6 +6,7 @@ from mcp_audit.detectors import (
 )
 from mcp_audit.detectors.command_injection import CommandInjectionDetector
 from mcp_audit.detectors.secrets import SecretsDetector
+from mcp_audit.detectors.shadow_mcp import ShadowMcpDetector
 from mcp_audit.detectors.supply_chain import SupplyChainDetector
 from mcp_audit.detectors.tool_poisoning import ToolPoisoningDetector
 
@@ -64,3 +65,19 @@ def test_supply_chain_quiet_on_clean_package():
     ctx = ScanContext(server_label="clean",
                       config_files=[FIXTURES / "clean_pkg" / "package.json"])
     assert SupplyChainDetector().scan(ctx) == []
+
+
+def test_shadow_mcp_inventories_declared_servers():
+    ctx = ScanContext(server_label="fixture",
+                      config_files=[FIXTURES / "shadow_repo" / "mcp.json"])
+    findings = ShadowMcpDetector().scan(ctx)
+    assert all(f.id == "MCP-AUDIT-D5-SHADOW" for f in findings)
+    titles = " ".join(f.title for f in findings)
+    assert "filesystem" in titles and "internal-secrets" in titles
+    assert len(findings) == 2
+
+
+def test_shadow_mcp_quiet_without_mcp_artifacts():
+    ctx = ScanContext(server_label="clean",
+                      config_files=[FIXTURES / "clean_pkg" / "package.json"])
+    assert ShadowMcpDetector().scan(ctx) == []

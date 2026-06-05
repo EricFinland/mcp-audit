@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/"]
+    },
+    "internal-secrets": {
+      "command": "python",
+      "args": ["./servers/secrets_server.py"]
+    }
+  }
+}
