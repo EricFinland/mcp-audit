@@ -13,15 +13,15 @@ _SEV_COLOR = {
 }
 
 
-def to_json(findings: list[Finding], server: str) -> str:
+def to_json(findings: list[Finding], server: str, suppressed: int = 0) -> str:
     return json.dumps(
-        {"server": server, "count": len(findings),
+        {"server": server, "count": len(findings), "suppressed": suppressed,
          "findings": [f.to_dict() for f in findings]},
         indent=2,
     )
 
 
-def print_table(findings: list[Finding], server: str) -> None:
+def print_table(findings: list[Finding], server: str, suppressed: int = 0) -> None:
     try:
         from rich.console import Console
         from rich.table import Table
@@ -34,6 +34,8 @@ def print_table(findings: list[Finding], server: str) -> None:
     if not findings:
         console.print("[bold green]No findings.[/bold green] "
                       "(Note: a clean static scan does not prove a server is safe; see report.)")
+        if suppressed:
+            console.print(f"[dim]{suppressed} finding(s) suppressed by allowlist.[/dim]")
         return
 
     table = Table(show_lines=False, expand=True)
@@ -51,6 +53,10 @@ def print_table(findings: list[Finding], server: str) -> None:
     counts = Counter(str(f.severity) for f in findings)
     summary = "  ".join(f"{k}: {counts[k]}" for k in ("CRITICAL", "HIGH", "MEDIUM", "LOW") if counts[k])
     console.print(f"\n[bold]{len(findings)} findings[/bold]   {summary}")
+    if suppressed:
+        console.print(f"[dim]{suppressed} finding(s) suppressed by allowlist.[/dim]")
+    console.print("[dim]Suppress a false positive: mcp-audit allow <fingerprint>  "
+                  "(fingerprints in --json / --report).[/dim]")
 
 
 def _plain(findings: list[Finding], server: str) -> None:
@@ -60,12 +66,15 @@ def _plain(findings: list[Finding], server: str) -> None:
     print(f"{len(findings)} findings")
 
 
-def to_markdown(findings: list[Finding], server: str) -> str:
+def to_markdown(findings: list[Finding], server: str, suppressed: int = 0) -> str:
     lines = [f"# mcp-audit report: `{server}`", ""]
     counts = Counter(str(f.severity) for f in findings)
     lines.append(f"**{len(findings)} findings** ("
                  + ", ".join(f"{k}: {counts[k]}" for k in ("CRITICAL", "HIGH", "MEDIUM", "LOW") if counts[k])
                  + ")")
+    if suppressed:
+        lines.append("")
+        lines.append(f"_{suppressed} finding(s) suppressed by allowlist._")
     lines.append("")
 
     if findings:
@@ -79,7 +88,9 @@ def to_markdown(findings: list[Finding], server: str) -> str:
             lines += [f"#### {f.severity} · {label(f.owasp_id)} · {f.title}",
                       f"- **Where:** `{f.location}`",
                       f"- **Evidence:** `{f.evidence}`",
-                      f"- **Fix:** {f.recommendation}", ""]
+                      f"- **Fix:** {f.recommendation}",
+                      f"- **Fingerprint:** `{f.fingerprint()}` "
+                      f"(false positive? `mcp-audit allow {f.fingerprint()}`)", ""]
 
     # The honesty section: what a static scan can and cannot prove.
     lines += ["## Coverage & limitations", "",

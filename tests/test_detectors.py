@@ -2,8 +2,9 @@
 from pathlib import Path
 
 from mcp_audit.detectors import (
-    ScanContext, ToolInfo,
+    Confidence, ScanContext, Severity, ToolInfo,
 )
+from mcp_audit.detectors.base import Finding
 from mcp_audit.detectors.command_injection import CommandInjectionDetector
 from mcp_audit.detectors.secrets import SecretsDetector
 from mcp_audit.detectors.shadow_mcp import ShadowMcpDetector
@@ -108,3 +109,26 @@ def test_shadow_mcp_quiet_without_mcp_artifacts():
     ctx = ScanContext(server_label="clean",
                       config_files=[FIXTURES / "clean_pkg" / "package.json"])
     assert ShadowMcpDetector().scan(ctx) == []
+
+
+def _finding(fid="X", loc="loc", ev="ev"):
+    return Finding(id=fid, title="t", severity=Severity.HIGH, owasp_id="MCP01",
+                   confidence=Confidence.HIGH, location=loc, evidence=ev, recommendation="r")
+
+
+def test_finding_fingerprint_is_stable_and_distinct():
+    assert _finding().fingerprint() == _finding().fingerprint()
+    assert _finding(fid="X").fingerprint() != _finding(fid="Y").fingerprint()
+    assert _finding(loc="a").fingerprint() != _finding(loc="b").fingerprint()
+
+
+def test_allowlist_roundtrip_and_suppression(tmp_path):
+    from mcp_audit.allowlist import add_to_allowlist, load_allowlist
+    fp = _finding().fingerprint()
+    add_to_allowlist(fp, root=tmp_path)
+    add_to_allowlist(fp, root=tmp_path)  # idempotent
+    allow = load_allowlist(tmp_path)
+    assert fp in allow
+    findings = [_finding(fid="X"), _finding(fid="Y")]
+    kept = [f for f in findings if f.fingerprint() not in allow]
+    assert len(kept) == 1 and kept[0].id == "Y"

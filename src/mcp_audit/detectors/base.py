@@ -6,6 +6,7 @@ CI output. Detectors are deterministic and run with no network by default.
 from __future__ import annotations
 
 import enum
+import hashlib
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any
@@ -65,10 +66,20 @@ class Finding:
     evidence: str                 # the offending snippet (truncated)
     recommendation: str
 
+    def fingerprint(self) -> str:
+        """Stable short id for this finding, used to whitelist false positives.
+
+        Built from the detector id + OWASP id + location + evidence so the same finding on
+        the same target hashes identically across runs, but a different finding does not.
+        """
+        key = f"{self.id}|{self.owasp_id}|{self.location}|{self.evidence}".encode("utf-8")
+        return hashlib.sha256(key).hexdigest()[:12]
+
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["severity"] = str(self.severity)
         d["confidence"] = str(self.confidence)
+        d["fingerprint"] = self.fingerprint()
         return d
 
 

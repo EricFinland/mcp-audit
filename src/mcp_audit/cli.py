@@ -76,13 +76,22 @@ def scan(
     ctx = _gather(source, stdio, http, git)
     findings = _run_detectors(ctx)
 
+    from .allowlist import load_allowlist
+    allow = load_allowlist(ctx.root)
+    suppressed = 0
+    if allow:
+        kept = [f for f in findings if f.fingerprint() not in allow]
+        suppressed = len(findings) - len(kept)
+        findings = kept
+
     from . import report as rep
     if json_out:
-        typer.echo(rep.to_json(findings, ctx.server_label))
+        typer.echo(rep.to_json(findings, ctx.server_label, suppressed))
     else:
-        rep.print_table(findings, ctx.server_label)
+        rep.print_table(findings, ctx.server_label, suppressed)
     if report:
-        Path(report).write_text(rep.to_markdown(findings, ctx.server_label), encoding="utf-8")
+        Path(report).write_text(rep.to_markdown(findings, ctx.server_label, suppressed),
+                                encoding="utf-8")
         if not json_out:
             typer.echo(f"\nReport written to {report}")
 
@@ -140,6 +149,17 @@ def diff(stdio: str = typer.Option(None), http: str = typer.Option(None)):
     for n in removed:
         typer.echo(f"REMOVED: {n}")
     raise typer.Exit(1)
+
+
+@app.command()
+def allow(
+    fingerprint: str = typer.Argument(..., help="Finding fingerprint to suppress (from --json/--report)."),
+    root: str = typer.Option(None, help="Project root holding .mcp-audit/allowlist (default: cwd)."),
+):
+    """Suppress a finding as a false positive by adding its fingerprint to the allowlist."""
+    from .allowlist import add_to_allowlist
+    target = add_to_allowlist(fingerprint, Path(root) if root else None)
+    typer.echo(f"Allowlisted {fingerprint} -> {target}")
 
 
 def main() -> None:
