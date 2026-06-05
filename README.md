@@ -48,6 +48,12 @@ mcp-audit diff     --stdio "python server.py"
 
 # CI gate
 mcp-audit scan ./server --fail-on high
+
+# Optional local LLM second opinion (Ollama; nothing leaves your machine). --cloud opts in loudly.
+mcp-audit scan ./server --llm
+
+# Suppress a confirmed false positive by its fingerprint (shown in --json and --report)
+mcp-audit allow <fingerprint>
 ```
 
 ### Try it on the bundled poisoned fixture
@@ -58,6 +64,10 @@ mcp-audit scan ./fixtures        # source-level scan (catches the command-inject
 ```
 
 ## What it detects
+
+Seven detectors. Every finding carries an OWASP MCP Top 10 id, a severity, a confidence level,
+and a stable fingerprint you can whitelist (`mcp-audit allow <fingerprint>`) when it is a false
+positive. See [`sample_report.md`](sample_report.md) for real output against the bundled fixtures.
 
 | OWASP | Risk | Coverage |
 |---|---|---|

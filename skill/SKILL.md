@@ -43,6 +43,8 @@ mcp-audit diff --stdio "python server.py"
 3. **Always state the limitation:** a clean static scan does not prove safety; it cannot
    catch runtime auth gaps (MCP07), scope creep (MCP02), or post-install rug-pulls.
 4. If anything is CRITICAL/HIGH, advise against installing until resolved or disclosed.
+5. If a finding is a clear false positive, note its fingerprint (shown in `--json`/`--report`);
+   the user can suppress it with `mcp-audit allow <fingerprint>`.
 
 ## Privacy note
 mcp-audit is local-first. Only run with `--cloud` if the user explicitly opts in, and tell
