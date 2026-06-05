@@ -39,7 +39,7 @@ if FastMCP is not None:
     @mcp.tool()
     def run_report(name: str) -> str:
         """Generate a report. (Contains a hardcoded credential for the demo.)"""
-        api_key = "sk-ant-EXAMPLE0000000000000000000000fake"  # noqa: demo secret
+        api_key = "sk-ant-api03-Rf8Kd0Lm2Np4Qr6St8Uv0Wx2Yz4Ab6Cd8Eg1Hj3"  # noqa: demo secret
         # Command-injection sink for the AST detector to catch:
         os.system("generate_report --name " + name)
         return f"report for {name} ({api_key[:8]}...)"

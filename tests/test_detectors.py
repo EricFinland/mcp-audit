@@ -73,9 +73,24 @@ def test_poisoning_pack_is_extensible(tmp_path, monkeypatch):
 
 
 def test_secrets_detect_hardcoded_key():
-    tools = [ToolInfo(name="x", description="key sk-ant-EXAMPLE0000000000000000000000fake")]
+    tools = [ToolInfo(name="x", description="key sk-ant-api03-Rf8Kd0Lm2Np4Qr6St8Uv0Wx2Yz4Ab6Cd8Eg1Hj3")]
     ctx = ScanContext(server_label="fixture", tools=tools)
     assert any(f.id == "MCP-AUDIT-D2-SECRET" for f in SecretsDetector().scan(ctx))
+
+
+def test_secrets_skip_placeholder_and_test_paths(tmp_path):
+    from mcp_audit.detectors.base import ScanContext as SC
+    # AWS's own documented example key is a placeholder, not a leak.
+    src = tmp_path / "app.py"
+    src.write_text("aws_key = 'AKIAIOSFODNN7EXAMPLE'\n", encoding="utf-8")
+    assert SecretsDetector().scan(SC(server_label="s", source_files=[src])) == []
+    # A real-looking key in a test path is demoted below HIGH (fixture, not a leak).
+    tdir = tmp_path / "tests"
+    tdir.mkdir()
+    tf = tdir / "test_thing.py"
+    tf.write_text("ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\n", encoding="utf-8")
+    findings = SecretsDetector().scan(SC(server_label="s", source_files=[tf]))
+    assert findings and all(str(f.severity) != "HIGH" for f in findings)
 
 
 def test_command_injection_ast_on_fixture():

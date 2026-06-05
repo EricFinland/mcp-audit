@@ -46,6 +46,38 @@ def _shannon(s: str) -> float:
     return -sum((c / n) * math.log2(c / n) for c in counts.values())
 
 
+# Severity follows confidence so a guessy generic/entropy match is not reported as HIGH.
+_CONF_TO_SEV = {Confidence.HIGH: Severity.HIGH, Confidence.MEDIUM: Severity.MEDIUM,
+                Confidence.LOW: Severity.LOW}
+
+# Values that are obviously placeholders/examples, not real secrets (e.g. AWS's own
+# AKIAIOSFODNN7EXAMPLE, or password='test-password'). High-precision substrings.
+_PLACEHOLDER_WORDS = (
+    "example", "test", "sample", "placeholder", "changeme", "change-me", "change_me",
+    "dummy", "fake", "redacted", "notreal", "not-real", "your-", "your_", "yourkey",
+    "insert", "replace", "foobar", "todo", "xxxx", "dummytoken", "mykey", "<", ">", "...",
+)
+
+# Path segments where a "secret" is almost always an intentional fixture, so demote it.
+_TEST_SEGMENTS = {
+    "test", "tests", "__tests__", "testdata", "example", "examples", "sample", "samples",
+    "fixture", "fixtures", "mock", "mocks", "docs", "doc", "spec", "specs", "demo", "e2e",
+}
+
+
+def _looks_placeholder(value: str) -> bool:
+    lv = value.lower()
+    return any(w in lv for w in _PLACEHOLDER_WORDS)
+
+
+def _is_test_path(path: Path) -> bool:
+    parts = [p.lower() for p in path.parts]
+    if any(seg in _TEST_SEGMENTS for seg in parts):
+        return True
+    name = path.name.lower()
+    return name.startswith(("test_", "test-")) or name.endswith(("_test.py", ".test.ts", ".spec.ts"))
+
+
 class SecretsDetector(Detector):
     name = "secrets"
     owasp_id = "MCP01"
@@ -70,8 +102,9 @@ class SecretsDetector(Detector):
 
     def _scan_file(self, content: str, path: Path) -> list[Finding]:
         out: list[Finding] = []
+        demote = _is_test_path(path)
         for lineno, line in enumerate(content.splitlines(), 1):
-            out.extend(self._scan_text(line, f"{path}:{lineno}"))
+            out.extend(self._scan_text(line, f"{path}:{lineno}", demote=demote))
             # decoded variants
             for blob in _B64ISH.findall(line) + _HEXISH.findall(line):
                 for name, dec in _DECODERS.items():
@@ -80,24 +113,30 @@ class SecretsDetector(Detector):
                     except Exception:
                         continue
                     if decoded and decoded.isprintable():
-                        sub = self._scan_text(decoded, f"{path}:{lineno} (decoded {name})")
+                        sub = self._scan_text(decoded, f"{path}:{lineno} (decoded {name})", demote=demote)
                         out.extend(sub)
         return out
 
-    def _scan_text(self, text: str, loc: str) -> list[Finding]:
+    def _scan_text(self, text: str, loc: str, demote: bool = False) -> list[Finding]:
         out: list[Finding] = []
         for label, pat, conf in _PATTERNS:
             m = pat.search(text)
             if not m:
                 continue
-            # entropy gate for the generic pattern to cut false positives
+            value = m.group(0)
             if label.startswith("Generic"):
-                val = m.group(0).split("=")[-1].split(":")[-1].strip(" '\"")
-                if _shannon(val) < 3.0:
+                value = value.split("=")[-1].split(":")[-1].strip(" '\"")
+                if _shannon(value) < 3.0:  # entropy gate cuts low-information matches
                     continue
+            # Skip obvious placeholders/examples (AKIA...EXAMPLE, 'test-password', etc.).
+            if _looks_placeholder(value):
+                continue
+            severity = _CONF_TO_SEV.get(conf, Severity.MEDIUM)
+            if demote:  # a credential in a test/example/docs path is almost always a fixture
+                severity = Severity(max(Severity.LOW, severity - 1))
             out.append(Finding(
                 id="MCP-AUDIT-D2-SECRET", title=f"Possible hardcoded credential ({label})",
-                severity=Severity.HIGH, owasp_id=self.owasp_id, confidence=conf,
+                severity=severity, owasp_id=self.owasp_id, confidence=conf,
                 location=loc, evidence=truncate(m.group(0)),
                 recommendation="Move secrets to environment variables or a secret manager; "
                                "rotate this credential if it is real and was committed.",
