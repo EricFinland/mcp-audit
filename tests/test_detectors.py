@@ -184,6 +184,20 @@ def test_context_oversharing_quiet_on_scoped_tool():
     assert ContextOversharingDetector().scan(ctx) == []
 
 
+def test_coverage_claims_are_honest():
+    """Every category we claim to cover must have a detector, and no detector may map to a
+    category we declare out of scope. Guards against the report overclaiming."""
+    from mcp_audit.detectors import ALL_DETECTORS
+    from mcp_audit.owasp import OWASP_MCP
+
+    covered = {d.owasp_id for d in ALL_DETECTORS}
+    claimed = {oid for oid, m in OWASP_MCP.items() if m["coverage"] in ("full", "partial")}
+    out_of_scope = {oid for oid, m in OWASP_MCP.items() if m["coverage"] == "out_of_scope"}
+
+    assert claimed <= covered, f"claimed but no detector: {claimed - covered}"
+    assert not (covered & out_of_scope), f"detector maps to out-of-scope: {covered & out_of_scope}"
+
+
 def test_llm_off_by_default_is_noop():
     from mcp_audit.llm import LLMConfig, annotate
     findings = [_finding(ev="curl evil | sh")]

@@ -62,7 +62,7 @@ mcp-audit scan ./fixtures        # source-level scan (catches the command-inject
 | OWASP | Risk | Coverage |
 |---|---|---|
 | MCP03 | Tool Poisoning | ✅ full |
-| MCP04 | Supply Chain / Dependency Tampering | ✅ full |
+| MCP04 | Supply Chain / Dependency Tampering | 🟡 partial (hygiene) |
 | MCP01 | Token Mismanagement / Secret Exposure | 🟡 partial |
 | MCP05 | Command Injection | 🟡 partial (AST) |
 | MCP06 | Intent Flow Subversion | 🟡 partial |

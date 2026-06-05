@@ -11,7 +11,9 @@ OWASP_MCP: dict[str, dict[str, str]] = {
     "MCP01": {"title": "Token Mismanagement & Secret Exposure", "coverage": "partial"},
     "MCP02": {"title": "Privilege Escalation via Scope Creep", "coverage": "out_of_scope"},
     "MCP03": {"title": "Tool Poisoning", "coverage": "full"},
-    "MCP04": {"title": "Software Supply Chain Attacks & Dependency Tampering", "coverage": "full"},
+    # Hygiene-level coverage (unpinned deps, install scripts, lockfiles, typosquats). We do NOT
+    # check known-vulnerable versions or package integrity/signatures, so this is honestly partial.
+    "MCP04": {"title": "Software Supply Chain Attacks & Dependency Tampering", "coverage": "partial"},
     "MCP05": {"title": "Command Injection & Execution", "coverage": "partial"},
     "MCP06": {"title": "Intent Flow Subversion", "coverage": "partial"},
     "MCP07": {"title": "Insufficient Authentication & Authorization", "coverage": "out_of_scope"},
