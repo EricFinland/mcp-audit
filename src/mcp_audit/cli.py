@@ -67,6 +67,9 @@ def scan(
     json_out: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
     report: str = typer.Option(None, help="Write a markdown report to this path."),
     fail_on: str = typer.Option("none", help="Exit non-zero at/above this severity: none|low|medium|high|critical."),
+    llm: bool = typer.Option(False, "--llm", help="Add a local LLM second opinion (Ollama). Off by default."),
+    cloud: bool = typer.Option(False, "--cloud", help="Use a hosted model for --llm. Snippets leave your machine (loud)."),
+    llm_model: str = typer.Option("llama3", help="Model name for the --llm second-opinion pass."),
 ):
     """Scan an MCP server."""
     if not any([source, stdio, http, git]):
@@ -83,6 +86,10 @@ def scan(
         kept = [f for f in findings if f.fingerprint() not in allow]
         suppressed = len(findings) - len(kept)
         findings = kept
+
+    if llm or cloud:
+        from .llm import LLMConfig, annotate
+        annotate(findings, LLMConfig(enabled=True, cloud=cloud, model=llm_model))
 
     from . import report as rep
     if json_out:

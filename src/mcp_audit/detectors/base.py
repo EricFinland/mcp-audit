@@ -65,6 +65,7 @@ class Finding:
     location: str                 # tool name, file:line, etc.
     evidence: str                 # the offending snippet (truncated)
     recommendation: str
+    llm_note: str | None = None   # optional second-opinion from the local LLM pass
 
     def fingerprint(self) -> str:
         """Stable short id for this finding, used to whitelist false positives.

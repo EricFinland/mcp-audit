@@ -88,8 +88,10 @@ def to_markdown(findings: list[Finding], server: str, suppressed: int = 0) -> st
             lines += [f"#### {f.severity} · {label(f.owasp_id)} · {f.title}",
                       f"- **Where:** `{f.location}`",
                       f"- **Evidence:** `{f.evidence}`",
-                      f"- **Fix:** {f.recommendation}",
-                      f"- **Fingerprint:** `{f.fingerprint()}` "
+                      f"- **Fix:** {f.recommendation}"]
+            if f.llm_note:
+                lines.append(f"- **LLM second opinion:** {f.llm_note}")
+            lines += [f"- **Fingerprint:** `{f.fingerprint()}` "
                       f"(false positive? `mcp-audit allow {f.fingerprint()}`)", ""]
 
     # The honesty section: what a static scan can and cannot prove.
