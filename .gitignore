@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.egg-info/
+dist/
+build/
+.mcp-audit/
+
+# Local-only planning notes (not part of the public project)
+PLAN.md
+
+# Scratch
+_tmp*
+*.tmp

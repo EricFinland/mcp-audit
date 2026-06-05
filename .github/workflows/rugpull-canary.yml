@@ -1,0 +1,32 @@
+name: mcp-rugpull-canary
+
+# Fails CI if a tracked MCP server's tool definitions drift from the committed baseline.
+# Catches rug-pulls (MCP03) that a one-shot static scan cannot. Commit the baseline file
+# under .mcp-audit/ after the first run on a known-good version.
+
+on:
+  schedule:
+    - cron: "0 12 * * *"   # daily
+  workflow_dispatch: {}
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install mcp-audit
+        run: pip install mcp-audit
+
+      # Replace the --stdio command with the server you want to watch.
+      - name: Restore committed baseline
+        run: |
+          mkdir -p ~/.mcp-audit/baselines
+          cp .mcp-audit/baselines/*.json ~/.mcp-audit/baselines/ || true
+
+      - name: Diff against baseline
+        run: mcp-audit diff --stdio "python server.py"

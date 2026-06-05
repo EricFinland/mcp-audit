@@ -1,0 +1,33 @@
+[project]
+name = "mcp-audit"
+version = "0.1.0"
+description = "Local-first, pre-install security auditor for MCP servers. Scan before you trust."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Eric Catalano" }]
+keywords = ["mcp", "security", "scanner", "agent", "tool-poisoning", "owasp"]
+dependencies = [
+    "mcp>=1.7",
+    "typer>=0.12",
+    "rich>=13.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+# Local LLM second-opinion pass (opt-in). Cloud is never a default.
+llm = ["ollama>=0.3"]
+
+[project.scripts]
+mcp-audit = "mcp_audit.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/EricFinland/mcp-audit"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mcp_audit"]
