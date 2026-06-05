@@ -5,9 +5,10 @@ dist/
 build/
 .mcp-audit/
 
-# Local-only planning notes (not part of the public project)
+# Local-only planning notes and tooling state (not part of the public project)
 PLAN.md
 .planning/
+.claude/
 
 # Scratch
 _tmp*
