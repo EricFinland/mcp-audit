@@ -1,5 +1,8 @@
 """Detectors must fire on the poisoned fixture and stay quiet on clean input."""
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from mcp_audit.detectors import (
     Confidence, ScanContext, Severity, ToolInfo,
@@ -132,3 +135,21 @@ def test_allowlist_roundtrip_and_suppression(tmp_path):
     findings = [_finding(fid="X"), _finding(fid="Y")]
     kept = [f for f in findings if f.fingerprint() not in allow]
     assert len(kept) == 1 and kept[0].id == "Y"
+
+
+def test_clone_repo_rejects_empty_url():
+    from mcp_audit.sources import clone_repo
+    with pytest.raises(ValueError):
+        clone_repo("")
+
+
+def test_clone_repo_wraps_git_failure(monkeypatch):
+    from mcp_audit import sources
+
+    def boom(*args, **kwargs):
+        raise subprocess.CalledProcessError(128, args[0], stderr="fatal: repository not found")
+
+    monkeypatch.setattr(subprocess, "run", boom)
+    with pytest.raises(RuntimeError) as ei:
+        sources.clone_repo("https://example.com/does-not-exist.git")
+    assert "repository not found" in str(ei.value)

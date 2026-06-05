@@ -16,13 +16,28 @@ _CONFIG_NAMES = {"mcp.json", "claude_desktop_config.json", ".env",
 _SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build"}
 
 
-def clone_repo(url: str) -> Path:
-    """Shallow-clone a git repo to a temp dir. Read-only analysis afterwards."""
+def clone_repo(url: str, timeout: int = 120) -> Path:
+    """Shallow-clone a git repo to a temp dir for read-only analysis.
+
+    Raises a clear RuntimeError (not a raw CalledProcessError) if git is missing, the clone
+    times out, or the remote rejects it, so the CLI can report something a human can act on.
+    """
+    if not url or not url.strip():
+        raise ValueError("empty git URL")
     dest = Path(tempfile.mkdtemp(prefix="mcp-audit-"))
-    subprocess.run(
-        ["git", "clone", "--depth", "1", url, str(dest)],
-        check=True, capture_output=True, text=True,
-    )
+    try:
+        subprocess.run(
+            ["git", "clone", "--depth", "1", url, str(dest)],
+            check=True, capture_output=True, text=True, timeout=timeout,
+        )
+    except FileNotFoundError as e:  # git not installed / not on PATH
+        raise RuntimeError("git is not installed or not on PATH; cannot clone.") from e
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError(f"git clone timed out after {timeout}s: {url}") from e
+    except subprocess.CalledProcessError as e:
+        tail = (e.stderr or "").strip().splitlines()
+        detail = tail[-1] if tail else f"git exited {e.returncode}"
+        raise RuntimeError(f"git clone failed for {url}: {detail}") from e
     return dest
 
 
