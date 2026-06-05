@@ -1,6 +1,7 @@
 """Detector registry."""
 from .base import Confidence, Detector, Finding, ScanContext, Severity, ToolInfo
 from .command_injection import CommandInjectionDetector
+from .context_oversharing import ContextOversharingDetector
 from .intent_flow import IntentFlowDetector
 from .secrets import SecretsDetector
 from .shadow_mcp import ShadowMcpDetector
@@ -14,6 +15,7 @@ ALL_DETECTORS: list[Detector] = [
     SupplyChainDetector(),
     ShadowMcpDetector(),
     IntentFlowDetector(),
+    ContextOversharingDetector(),
 ]
 
 __all__ = [

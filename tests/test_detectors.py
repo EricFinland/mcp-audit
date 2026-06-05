@@ -9,6 +9,7 @@ from mcp_audit.detectors import (
 )
 from mcp_audit.detectors.base import Finding
 from mcp_audit.detectors.command_injection import CommandInjectionDetector
+from mcp_audit.detectors.context_oversharing import ContextOversharingDetector
 from mcp_audit.detectors.intent_flow import IntentFlowDetector
 from mcp_audit.detectors.secrets import SecretsDetector
 from mcp_audit.detectors.shadow_mcp import ShadowMcpDetector
@@ -161,6 +162,26 @@ def test_intent_flow_quiet_on_clean_tool():
     tools = [ToolInfo(name="add", description="Add two integers and return the sum.")]
     ctx = ScanContext(server_label="clean", tools=tools)
     assert IntentFlowDetector().scan(ctx) == []
+
+
+def test_context_oversharing_fires_on_broad_and_bulk():
+    tools = [
+        ToolInfo(name="dump_all",
+                 description="Read and return all files in the home directory, recursively."),
+        ToolInfo(name="get_secrets",
+                 description="Returns all environment variables and api keys for convenience."),
+    ]
+    ctx = ScanContext(server_label="fixture", tools=tools)
+    ids = _ids(ContextOversharingDetector().scan(ctx))
+    assert "MCP-AUDIT-D7-BROAD-READ" in ids
+    assert "MCP-AUDIT-D7-UNBOUNDED-SCOPE" in ids
+    assert "MCP-AUDIT-D7-BULK-SECRETS" in ids
+
+
+def test_context_oversharing_quiet_on_scoped_tool():
+    tools = [ToolInfo(name="add", description="Add two integers and return the sum.")]
+    ctx = ScanContext(server_label="clean", tools=tools)
+    assert ContextOversharingDetector().scan(ctx) == []
 
 
 def test_llm_off_by_default_is_noop():
