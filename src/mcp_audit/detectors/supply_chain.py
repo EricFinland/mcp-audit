@@ -30,8 +30,29 @@ _NPM_INSTALL_HOOKS = ("preinstall", "install", "postinstall")
 # A network-fetch or shell-pipe inside an install script is the dangerous pattern.
 _FETCH_EXEC = re.compile(r"\b(curl|wget|iwr|invoke-webrequest)\b|https?://|\|\s*(sh|bash|node|python)\b",
                          re.IGNORECASE)
-# Unpinned npm version specifiers.
-_NPM_UNPINNED = re.compile(r"^[\^~]|[\*x]|\blatest\b|\s-\s|>=|>|<", re.IGNORECASE)
+def _npm_loose(spec: str) -> bool:
+    """True only for genuinely unbounded npm specs.
+
+    Caret/tilde/exact ranges are conventional and pinned by a lockfile, so flagging them is
+    noise. We flag only specs that can resolve to an unpredictable version: `*`, `latest`,
+    `x`-wildcards, open comparator ranges, and git/url/file specs (a moving target).
+    """
+    s = spec.strip().lower()
+    if s in ("", "*", "latest", "x"):
+        return True
+    if "://" in s or s.startswith(("git", "github:", "file:", "link:")):
+        return True
+    if re.search(r"(^|\.)x(\.|$)", s):  # 1.x / 1.2.x
+        return True
+    if s[:1] in "<>":                    # >=1.0.0, >1, <2 (open ranges)
+        return True
+    return False
+
+
+def _py_loose(spec: str, name: str) -> bool:
+    """True only for Python deps with no real version bound (bare name or a wildcard)."""
+    rest = str(spec)[len(name):].strip()
+    return rest in ("", "*") or "*" in rest
 # Popular packages people typo; conservative list for edit-distance-1 lookalikes.
 _POPULAR = {
     "requests", "urllib3", "numpy", "pandas", "flask", "django", "fastapi", "pydantic",
@@ -114,11 +135,12 @@ class SupplyChainDetector(Detector):
         for key in ("dependencies", "devDependencies", "optionalDependencies"):
             deps.update(data.get(key, {}) or {})
         for dname, spec in deps.items():
-            if isinstance(spec, str) and _NPM_UNPINNED.search(spec):
+            if isinstance(spec, str) and _npm_loose(spec):
                 out.append(self._f(
-                    "D4-UNPINNED", f"Unpinned dependency '{dname}' ({spec})",
+                    "D4-UNPINNED", f"Loosely-pinned dependency '{dname}' ({spec})",
                     Severity.LOW, Confidence.MEDIUM, f"{path} :: {dname}", f"{dname}: {spec}",
-                    "Pin to an exact version so the dependency cannot change between installs.",
+                    "This spec can resolve to an unpredictable version. Use a bounded range with "
+                    "a committed lockfile, or pin exactly.",
                 ))
             out.extend(self._typosquat(dname, path))
 
@@ -139,11 +161,12 @@ class SupplyChainDetector(Detector):
         deps = (data.get("project", {}) or {}).get("dependencies", []) or []
         for dep in deps:
             name = re.split(r"[\s<>=!~\[]", str(dep), 1)[0].strip()
-            if "==" not in str(dep):
+            if name and _py_loose(dep, name):
                 out.append(self._f(
-                    "D4-UNPINNED", f"Unpinned dependency '{name}'",
+                    "D4-UNPINNED", f"Unbounded dependency '{name}'",
                     Severity.LOW, Confidence.MEDIUM, f"{path} :: {name}", str(dep),
-                    "Pin to an exact version (==) so the dependency cannot change between installs.",
+                    "Dependency has no version bound and can resolve to anything. Add at least a "
+                    "lower/upper bound, ideally with a lockfile.",
                 ))
             if name:
                 out.extend(self._typosquat(name.lower(), path))
@@ -161,12 +184,13 @@ class SupplyChainDetector(Detector):
             line = raw.strip()
             if not line or line.startswith("#") or line.startswith("-"):
                 continue
-            if "==" not in line and not line.startswith(("git+", "http")):
-                name = re.split(r"[\s<>=!~\[]", line, 1)[0].strip()
+            name = re.split(r"[\s<>=!~\[]", line, 1)[0].strip()
+            if name and _py_loose(line, name):
                 out.append(self._f(
-                    "D4-UNPINNED", f"Unpinned dependency '{name}'",
+                    "D4-UNPINNED", f"Unbounded dependency '{name}'",
                     Severity.LOW, Confidence.MEDIUM, f"{path}:{lineno}", line,
-                    "Pin to an exact version (==) so the dependency cannot change between installs.",
+                    "Dependency has no version bound and can resolve to anything. Add at least a "
+                    "lower/upper bound, ideally with a lockfile.",
                 ))
         return out
 
