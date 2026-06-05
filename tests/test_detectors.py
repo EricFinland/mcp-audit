@@ -39,6 +39,33 @@ def test_poisoning_quiet_on_clean_tool():
     assert ToolPoisoningDetector().scan(ctx) == []
 
 
+def test_poisoning_rules_load_from_pack():
+    from mcp_audit.detectors.tool_poisoning import load_rules
+    ids = {r.id for r in load_rules()}
+    assert {"D1-EXFIL", "D1-SENSITIVE-READ", "D1-DIRECTIVE"} <= ids
+
+
+def test_poisoning_pack_is_extensible(tmp_path, monkeypatch):
+    pack = tmp_path / "poisoning.yaml"
+    pack.write_text(
+        "version: 1\n"
+        "rules:\n"
+        "  - id: D1-CUSTOM\n"
+        "    severity: HIGH\n"
+        "    owasp_id: MCP03\n"
+        "    confidence: high\n"
+        "    title: Custom canary rule\n"
+        "    pattern: 'bespoke-canary-token'\n"
+        "    recommendation: test\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MCP_AUDIT_RULES", str(pack))
+    from mcp_audit.detectors.tool_poisoning import load_rules
+    rules = {r.id: r for r in load_rules()}
+    assert "D1-CUSTOM" in rules
+    assert rules["D1-CUSTOM"].pattern.search("contains a bespoke-canary-token here")
+
+
 def test_secrets_detect_hardcoded_key():
     tools = [ToolInfo(name="x", description="key sk-ant-EXAMPLE0000000000000000000000fake")]
     ctx = ScanContext(server_label="fixture", tools=tools)

@@ -1,0 +1,42 @@
+# mcp-audit tool-poisoning pattern pack (v1)
+#
+# These rules drive the regex layer of the D1 tool-poisoning detector (OWASP MCP03). They
+# mirror the in-code defaults so the pack can be extended WITHOUT a release: edit this file,
+# or drop your own `rules/poisoning.yaml` in the working directory, or point MCP_AUDIT_RULES
+# at a file. Rules merge over the built-in defaults by `id` (same id overrides; new id adds).
+#
+# Each rule: id, severity (INFO|LOW|MEDIUM|HIGH|CRITICAL), owasp_id, confidence (low|medium|high),
+# a Python-syntax regex `pattern` (matched case-insensitively), plus title + recommendation.
+# Structural checks (zero-width unicode, HTML/markdown comment smuggling) live in code, not here.
+
+version: 1
+rules:
+  - id: D1-EXFIL
+    severity: CRITICAL
+    owasp_id: MCP03
+    confidence: high
+    title: Tool description instructs data exfiltration
+    pattern: '\b(send|post|upload|exfiltrat|forward|transmit|leak|report)\b[^.]{0,60}(https?://|\bwebhook\b|\bendpoint\b|to (the )?(server|url|address))'
+    recommendation: >-
+      Description tells the agent to send data to an external destination. Treat the server as
+      malicious until proven otherwise.
+
+  - id: D1-SENSITIVE-READ
+    severity: HIGH
+    owasp_id: MCP03
+    confidence: high
+    title: Tool description references sensitive files
+    pattern: '(~/?\.ssh|id_rsa|id_ed25519|\.env\b|\.aws/credentials|\.config/|/etc/passwd|\.netrc|secrets?\.(json|ya?ml|txt))'
+    recommendation: >-
+      Description references credentials/keys/secret paths a benign tool should not need. Verify
+      the tool's actual behavior.
+
+  - id: D1-DIRECTIVE
+    severity: MEDIUM
+    owasp_id: MCP03
+    confidence: medium
+    title: Model-directed imperative in tool description
+    pattern: "\\b(ignore (all |the )?previous|disregard (the |all )?(above|prior)|do not (tell|inform|mention|reveal)|don't (tell|mention)|before (doing anything|you (do|respond|answer))|you must|always (call|run|read|send)|without (telling|informing) the user)\\b"
+    recommendation: >-
+      Description gives the model commands ('ignore previous', 'do not tell the user', etc.)
+      rather than describing the tool. Review intent.
