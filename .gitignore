@@ -13,3 +13,6 @@ PLAN.md
 # Scratch
 _tmp*
 *.tmp
+
+# Launch drafts (publish when approved, not via the repo)
+*-DRAFT.md
