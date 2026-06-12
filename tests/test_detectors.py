@@ -78,6 +78,19 @@ def test_secrets_detect_hardcoded_key():
     assert any(f.id == "MCP-AUDIT-D2-SECRET" for f in SecretsDetector().scan(ctx))
 
 
+def test_secrets_detect_expanded_providers():
+    blobs = {
+        "GitLab": "token glpat-AbCdEfGhIjKlMnOpQrSt99",
+        "npm": "npm_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789",
+        "Slack webhook": "https://hooks.slack.com/services/T0AAAA1/B0BBBB2/Zz9Yy8Xx7Ww6Vv5Uu4",
+        "Azure": "DefaultEndpointsProtocol=https;AccountKey="
+                 "Qq1Ww2Ee3Rr4Tt5Yy6Uu7Ii8Oo9Pp0Aa1Ss2Dd3Ff4Gg5Hh6Jj7Kk8Ll9Zz0Xx1Cc2Vv3Bb4==",
+    }
+    for label_, text in blobs.items():
+        ctx = ScanContext(server_label="x", tools=[ToolInfo(name="t", description=text)])
+        assert SecretsDetector().scan(ctx), f"{label_} pattern did not fire"
+
+
 def test_secrets_skip_placeholder_and_test_paths(tmp_path):
     from mcp_audit.detectors.base import ScanContext as SC
     # AWS's own documented example key is a placeholder, not a leak.
@@ -97,6 +110,28 @@ def test_command_injection_ast_on_fixture():
     ctx = ScanContext(server_label="fixture", source_files=[FIXTURE])
     findings = CommandInjectionDetector().scan(ctx)
     assert any(f.id == "MCP-AUDIT-D3-CMDINJ" for f in findings)
+
+
+def test_command_injection_fires_on_ts_fixture():
+    ctx = ScanContext(server_label="fixture", source_files=[FIXTURES / "evil_tool.ts"])
+    findings = CommandInjectionDetector().scan(ctx)
+    highs = [f for f in findings if str(f.severity) == "HIGH"]
+    assert len(highs) == 2  # execSync template literal + exec concatenation
+    lines = {f.location.rsplit(":", 1)[-1] for f in findings}
+    assert "18" not in lines  # regex.exec canary must not fire
+    assert not any("git status" in f.evidence for f in findings)  # literal cmd quiet
+
+
+def test_command_injection_quiet_on_clean_ts(tmp_path):
+    clean = tmp_path / "clean.ts"
+    clean.write_text(
+        'const m = /v(\\d+)/.exec(input);\n'
+        'import { execFile } from "node:child_process";\n'
+        'execFile("git", ["status"]);\n',
+        encoding="utf-8",
+    )
+    assert CommandInjectionDetector().scan(
+        ScanContext(server_label="clean", source_files=[clean])) == []
 
 
 def test_supply_chain_fires_on_bad_package():

@@ -22,7 +22,18 @@ _PATTERNS: list[tuple[str, re.Pattern[str], Confidence]] = [
     ("Stripe secret key", re.compile(r"\bsk_(live|test)_[A-Za-z0-9]{16,}\b"), Confidence.HIGH),
     ("Google API key", re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b"), Confidence.HIGH),
     ("OpenAI key", re.compile(r"\bsk-[A-Za-z0-9]{20,}\b"), Confidence.MEDIUM),
+    ("OpenAI project key", re.compile(r"\bsk-proj-[A-Za-z0-9_\-]{20,}\b"), Confidence.HIGH),
     ("Anthropic key", re.compile(r"\bsk-ant-[A-Za-z0-9_\-]{20,}\b"), Confidence.HIGH),
+    ("GitLab personal access token", re.compile(r"\bglpat-[A-Za-z0-9_\-]{20,}\b"), Confidence.HIGH),
+    ("npm token", re.compile(r"\bnpm_[A-Za-z0-9]{36}\b"), Confidence.HIGH),
+    ("Hugging Face token", re.compile(r"\bhf_[A-Za-z0-9]{30,}\b"), Confidence.HIGH),
+    ("Slack webhook URL", re.compile(
+        r"hooks\.slack\.com/services/T[A-Za-z0-9]+/B[A-Za-z0-9]+/[A-Za-z0-9]{10,}"), Confidence.HIGH),
+    ("SendGrid key", re.compile(r"\bSG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}\b"), Confidence.HIGH),
+    ("Twilio API key SID", re.compile(r"\bSK[0-9a-fA-F]{32}\b"), Confidence.MEDIUM),
+    ("Azure storage account key", re.compile(r"AccountKey=[A-Za-z0-9+/=]{60,}"), Confidence.HIGH),
+    ("JSON Web Token", re.compile(
+        r"\beyJ[A-Za-z0-9_\-]{10,}\.eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\b"), Confidence.MEDIUM),
     ("Private key block", re.compile(r"-----BEGIN (RSA |EC |OPENSSH |)PRIVATE KEY-----"), Confidence.HIGH),
     ("Generic secret assignment", re.compile(
         r"(?i)\b(api[_-]?key|secret|token|password|passwd|pwd)\b\s*[:=]\s*['\"][^'\"]{12,}['\"]"
