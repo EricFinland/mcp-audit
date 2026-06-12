@@ -98,9 +98,9 @@ class SupplyChainDetector(Detector):
         for path in ctx.config_files:
             try:
                 if path.name == "package.json":
-                    out.extend(self._scan_package_json(path))
+                    out.extend(self._scan_package_json(path, ctx.root))
                 elif path.name == "pyproject.toml":
-                    out.extend(self._scan_pyproject(path))
+                    out.extend(self._scan_pyproject(path, ctx.root))
                 elif path.name == "requirements.txt":
                     out.extend(self._scan_requirements(path))
             except (OSError, ValueError):
@@ -108,7 +108,7 @@ class SupplyChainDetector(Detector):
         return out
 
     # --- npm -----------------------------------------------------------------
-    def _scan_package_json(self, path: Path) -> list[Finding]:
+    def _scan_package_json(self, path: Path, root: Path | None) -> list[Finding]:
         out: list[Finding] = []
         data = json.loads(path.read_text("utf-8", "ignore"))
         scripts = data.get("scripts", {}) or {}
@@ -134,26 +134,32 @@ class SupplyChainDetector(Detector):
         deps: dict[str, str] = {}
         for key in ("dependencies", "devDependencies", "optionalDependencies"):
             deps.update(data.get(key, {}) or {})
+        # A lockfile anywhere from this package up to the scan root covers this package
+        # (workspace monorepos keep one root lockfile for every child package).
+        locked = self._lockfile_covering(path, root, _NPM_LOCKFILES)
         for dname, spec in deps.items():
-            if isinstance(spec, str) and _npm_loose(spec):
+            if isinstance(spec, str) and _npm_loose(spec) and not spec.startswith(("workspace:", "catalog:")):
                 out.append(self._f(
                     "D4-UNPINNED", f"Loosely-pinned dependency '{dname}' ({spec})",
-                    Severity.LOW, Confidence.MEDIUM, f"{path} :: {dname}", f"{dname}: {spec}",
-                    "This spec can resolve to an unpredictable version. Use a bounded range with "
-                    "a committed lockfile, or pin exactly.",
+                    Severity.INFO if locked else Severity.LOW, Confidence.MEDIUM,
+                    f"{path} :: {dname}", f"{dname}: {spec}",
+                    "This spec can resolve to an unpredictable version. "
+                    + ("A lockfile pins it today; prefer a bounded range as well."
+                       if locked else "Use a bounded range with a committed lockfile, or pin exactly."),
                 ))
             out.extend(self._typosquat(dname, path))
 
-        if not self._has_sibling(path, _NPM_LOCKFILES):
+        if not locked:
             out.append(self._f(
                 "D4-NO-LOCKFILE", "No npm lockfile present", Severity.LOW, Confidence.MEDIUM,
-                str(path), "package.json without package-lock.json / yarn.lock / pnpm-lock.yaml",
+                str(path), "package.json without package-lock.json / yarn.lock / pnpm-lock.yaml "
+                           "in this directory or any parent up to the scan root",
                 "Commit a lockfile so installs are reproducible and resolved versions are auditable.",
             ))
         return out
 
     # --- python --------------------------------------------------------------
-    def _scan_pyproject(self, path: Path) -> list[Finding]:
+    def _scan_pyproject(self, path: Path, root: Path | None) -> list[Finding]:
         if tomllib is None:  # pragma: no cover
             return []
         out: list[Finding] = []
@@ -170,7 +176,7 @@ class SupplyChainDetector(Detector):
                 ))
             if name:
                 out.extend(self._typosquat(name.lower(), path))
-        if not self._has_sibling(path, _PY_LOCKFILES):
+        if not self._lockfile_covering(path, root, _PY_LOCKFILES):
             out.append(self._f(
                 "D4-NO-LOCKFILE", "No Python lockfile present", Severity.LOW, Confidence.LOW,
                 str(path), "pyproject.toml without poetry.lock / uv.lock / pdm.lock",
@@ -208,9 +214,25 @@ class SupplyChainDetector(Detector):
         return []
 
     @staticmethod
-    def _has_sibling(path: Path, names: set[str]) -> bool:
-        parent = path.parent
-        return any((parent / n).exists() for n in names)
+    def _lockfile_covering(path: Path, root: Path | None, names: set[str]) -> bool:
+        """True if a lockfile exists beside `path` or in any parent up to the scan root."""
+        current = path.parent
+        try:
+            stop = root.resolve() if root else current.resolve()
+        except OSError:
+            stop = current
+        for _ in range(32):  # depth guard
+            if any((current / n).exists() for n in names):
+                return True
+            try:
+                if current.resolve() == stop:
+                    break
+            except OSError:
+                break
+            if current.parent == current:
+                break
+            current = current.parent
+        return False
 
     def _f(self, sid, title, sev, conf, loc, evidence, rec) -> Finding:
         return Finding(

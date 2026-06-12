@@ -96,3 +96,51 @@ class Detector:
 def truncate(text: str, limit: int = 160) -> str:
     text = " ".join(text.split())
     return text if len(text) <= limit else text[: limit - 1] + "\u2026"
+
+
+# Shared path-context helpers. A finding in a test fixture or a build script is real text,
+# but it is not the server's runtime attack surface, so detectors demote (never silence) it.
+
+TEST_SEGMENTS = {
+    "test", "tests", "__tests__", "testdata", "e2e-tests", "example", "examples", "sample",
+    "samples", "fixture", "fixtures", "mock", "mocks", "docs", "doc", "spec", "specs", "demo", "e2e",
+}
+
+BUILD_SEGMENTS = {".github", "eng", "scripts", "script", "ci", "build", "tools", "tooling", "devops"}
+
+
+def _segments(path: Path, root: Path | None) -> list[str]:
+    """Path segments judged relative to the scan root when possible.
+
+    Judging absolute segments would demote everything under e.g. ~/test-projects/, so only
+    the path inside the scanned tree counts. Outside the root (or with no root) we fall back
+    to absolute parts.
+    """
+    p = path
+    if root is not None:
+        try:
+            p = path.resolve().relative_to(Path(root).resolve())
+        except (OSError, ValueError):
+            p = path
+    return [s.lower() for s in p.parts]
+
+
+def is_test_path(path: Path, root: Path | None = None) -> bool:
+    parts = _segments(path, root)
+    if any(seg in TEST_SEGMENTS
+           or seg.endswith(("-tests", "_tests", "-test", "_test"))
+           or seg.startswith(("test-", "test_"))
+           for seg in parts[:-1]):
+        return True
+    name = path.name.lower()
+    return (name.startswith(("test_", "test-"))
+            or name.endswith(("_test.py", ".test.ts", ".test.js", ".spec.ts", ".spec.js")))
+
+
+def is_build_path(path: Path, root: Path | None = None) -> bool:
+    return any(seg in BUILD_SEGMENTS for seg in _segments(path, root)[:-1])
+
+
+def demote(severity: Severity, floor: Severity = Severity.LOW) -> Severity:
+    """One severity step down, never below `floor`."""
+    return Severity(max(int(floor), int(severity) - 1))

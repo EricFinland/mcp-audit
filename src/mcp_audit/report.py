@@ -14,17 +14,22 @@ _SEV_COLOR = {
     "MEDIUM": "yellow", "LOW": "cyan", "INFO": "dim",
 }
 
-# Grade weights: CRITICAL findings should tank the score; INFO is free.
-_GRADE_PENALTY = {Severity.CRITICAL: 40, Severity.HIGH: 15, Severity.MEDIUM: 5,
-                  Severity.LOW: 1, Severity.INFO: 0}
-
-
 def grade(findings: list[Finding]) -> tuple[str, int]:
-    """Letter grade + 0-100 score for a scan. Simple, explainable, deterministic."""
-    score = 100
-    for f in findings:
-        score -= _GRADE_PENALTY.get(f.severity, 0)
+    """Letter grade + 0-100 score for a scan. Simple, explainable, deterministic.
+
+    Weights: critical -40, high -15 (uncapped: severe findings should tank the score).
+    Medium is capped at -25 total and low at -10 total so a large monorepo's hygiene
+    volume cannot drown the severity profile. A scan with zero critical and zero high
+    findings never grades below C: hygiene alone is not a failing offense.
+    """
+    crit = sum(1 for f in findings if f.severity is Severity.CRITICAL)
+    high = sum(1 for f in findings if f.severity is Severity.HIGH)
+    med = sum(1 for f in findings if f.severity is Severity.MEDIUM)
+    low = sum(1 for f in findings if f.severity is Severity.LOW)
+    score = 100 - 40 * crit - 15 * high - min(25, 5 * med) - min(10, low)
     score = max(0, score)
+    if crit == 0 and high == 0:
+        score = max(score, 70)
     letter = ("A" if score >= 90 else "B" if score >= 80 else
               "C" if score >= 70 else "D" if score >= 60 else "F")
     return letter, score

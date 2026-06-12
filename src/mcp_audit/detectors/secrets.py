@@ -11,7 +11,7 @@ import math
 import re
 from pathlib import Path
 
-from .base import Confidence, Detector, Finding, ScanContext, Severity, truncate
+from .base import Confidence, Detector, Finding, ScanContext, Severity, is_test_path, truncate
 
 # (label, regex, confidence) - known prefixes are HIGH, generic entropy is MEDIUM.
 _PATTERNS: list[tuple[str, re.Pattern[str], Confidence]] = [
@@ -69,24 +69,9 @@ _PLACEHOLDER_WORDS = (
     "insert", "replace", "foobar", "todo", "xxxx", "dummytoken", "mykey", "<", ">", "...",
 )
 
-# Path segments where a "secret" is almost always an intentional fixture, so demote it.
-_TEST_SEGMENTS = {
-    "test", "tests", "__tests__", "testdata", "example", "examples", "sample", "samples",
-    "fixture", "fixtures", "mock", "mocks", "docs", "doc", "spec", "specs", "demo", "e2e",
-}
-
-
 def _looks_placeholder(value: str) -> bool:
     lv = value.lower()
     return any(w in lv for w in _PLACEHOLDER_WORDS)
-
-
-def _is_test_path(path: Path) -> bool:
-    parts = [p.lower() for p in path.parts]
-    if any(seg in _TEST_SEGMENTS for seg in parts):
-        return True
-    name = path.name.lower()
-    return name.startswith(("test_", "test-")) or name.endswith(("_test.py", ".test.ts", ".spec.ts"))
 
 
 class SecretsDetector(Detector):
@@ -108,12 +93,12 @@ class SecretsDetector(Detector):
                 content = path.read_text("utf-8", "ignore")
             except OSError:
                 continue
-            findings.extend(self._scan_file(content, path))
+            findings.extend(self._scan_file(content, path, ctx.root))
         return findings
 
-    def _scan_file(self, content: str, path: Path) -> list[Finding]:
+    def _scan_file(self, content: str, path: Path, root: Path | None = None) -> list[Finding]:
         out: list[Finding] = []
-        demote = _is_test_path(path)
+        demote = is_test_path(path, root)
         for lineno, line in enumerate(content.splitlines(), 1):
             out.extend(self._scan_text(line, f"{path}:{lineno}", demote=demote))
             # decoded variants

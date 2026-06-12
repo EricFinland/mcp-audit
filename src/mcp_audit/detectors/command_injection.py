@@ -19,7 +19,8 @@ import ast
 import re
 from pathlib import Path
 
-from .base import Confidence, Detector, Finding, ScanContext, Severity, truncate
+from .base import (Confidence, Detector, Finding, ScanContext, Severity, demote,
+                   is_build_path, is_test_path, truncate)
 
 _SHELL_CALLS = {
     ("os", "system"), ("os", "popen"),
@@ -111,6 +112,14 @@ _JS_SPAWN_SHELL = re.compile(r"(?<![.\w$])(spawn|spawnSync)\s*\(.*shell\s*:\s*tr
 _JS_TEMPLATE_DYN = re.compile(r"`[^`]*\$\{")
 _JS_CONCAT = re.compile(r"""(['"`][^'"`]*['"`]\s*\+|\+\s*['"`])""")
 _JS_IDENT_ARG = re.compile(r"^\s*([A-Za-z_$][\w$.]*)\s*[,)]")
+# Interpolations wrapped in JSON.stringify are quoted (imperfectly: $() still expands inside
+# double quotes on POSIX shells), so treat them as partially mitigated, not clean.
+_JS_INTERP = re.compile(r"\$\{\s*([^}]*)\}")
+
+
+def _all_interp_stringified(tail: str) -> bool:
+    groups = _JS_INTERP.findall(tail)
+    return bool(groups) and all(g.strip().startswith("JSON.stringify(") for g in groups)
 
 
 def _scan_js_line(line: str, has_cp_import: bool) -> tuple[str, "Severity"] | None:
@@ -122,6 +131,10 @@ def _scan_js_line(line: str, has_cp_import: bool) -> tuple[str, "Severity"] | No
         if name == "execSync" or has_cp_import:
             tail = line[m.end():]
             if _JS_TEMPLATE_DYN.search(tail) or _JS_CONCAT.search(tail):
+                if _all_interp_stringified(tail):
+                    return (f"{name}() with JSON.stringify-quoted interpolation "
+                            "(quoting does not stop $() expansion in POSIX double quotes)",
+                            Severity.MEDIUM)
                 return (f"{name}() with a dynamically built command", Severity.HIGH)
             if _JS_IDENT_ARG.match(tail):
                 return (f"{name}() with a variable command", Severity.MEDIUM)
@@ -145,6 +158,9 @@ class CommandInjectionDetector(Detector):
         findings: list[Finding] = []
         for path in ctx.source_files:
             suffix = path.suffix.lower()
+            # A sink in a test harness or build/CI script is real code but not the server's
+            # runtime attack surface: demote one severity step rather than going silent.
+            dem = is_test_path(path, ctx.root) or is_build_path(path, ctx.root)
             if suffix == ".py":
                 try:
                     tree = ast.parse(path.read_text("utf-8", "ignore"), filename=str(path))
@@ -152,9 +168,20 @@ class CommandInjectionDetector(Detector):
                     continue
                 v = _Visitor(path)
                 v.visit(tree)
-                findings.extend(v.findings)
+                found = v.findings
             elif suffix in _JS_EXT:
-                findings.extend(self._scan_js(path))
+                found = self._scan_js(path)
+            else:
+                continue
+            if dem:
+                found = [
+                    Finding(id=f.id, title=f.title, severity=demote(f.severity),
+                            owasp_id=f.owasp_id, confidence=f.confidence, location=f.location,
+                            evidence=truncate(f.evidence + " [test/build path]"),
+                            recommendation=f.recommendation)
+                    for f in found
+                ]
+            findings.extend(found)
         return findings
 
     def _scan_js(self, path: Path) -> list[Finding]:

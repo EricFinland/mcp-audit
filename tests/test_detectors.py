@@ -1,4 +1,5 @@
 """Detectors must fire on the poisoned fixture and stay quiet on clean input."""
+import json
 import subprocess
 from pathlib import Path
 
@@ -113,13 +114,43 @@ def test_command_injection_ast_on_fixture():
 
 
 def test_command_injection_fires_on_ts_fixture():
+    # The bundled fixture lives under fixtures/, so sinks are demoted one step to MEDIUM.
     ctx = ScanContext(server_label="fixture", source_files=[FIXTURES / "evil_tool.ts"])
     findings = CommandInjectionDetector().scan(ctx)
-    highs = [f for f in findings if str(f.severity) == "HIGH"]
-    assert len(highs) == 2  # execSync template literal + exec concatenation
+    sinks = [f for f in findings if f.id == "MCP-AUDIT-D3-CMDINJ"]
+    assert len(sinks) == 2  # execSync template literal + exec concatenation
+    assert all(str(f.severity) == "MEDIUM" for f in sinks)
+    assert all("[test/build path]" in f.evidence for f in sinks)
     lines = {f.location.rsplit(":", 1)[-1] for f in findings}
     assert "18" not in lines  # regex.exec canary must not fire
     assert not any("git status" in f.evidence for f in findings)  # literal cmd quiet
+
+
+def test_command_injection_ts_runtime_path_stays_high(tmp_path):
+    src = tmp_path / "src" / "server.ts"
+    src.parent.mkdir()
+    src.write_text(
+        'import { execSync } from "node:child_process";\n'
+        "export const run = (cmd: string) => execSync(`tool ${cmd}`);\n",
+        encoding="utf-8",
+    )
+    findings = CommandInjectionDetector().scan(
+        ScanContext(server_label="x", source_files=[src], root=tmp_path))
+    assert findings and str(findings[0].severity) == "HIGH"
+
+
+def test_command_injection_ts_stringify_is_partially_mitigated(tmp_path):
+    src = tmp_path / "src" / "open.ts"
+    src.parent.mkdir()
+    src.write_text(
+        'import { exec } from "node:child_process";\n'
+        "exec(`open ${JSON.stringify(url)}`);\n",
+        encoding="utf-8",
+    )
+    findings = CommandInjectionDetector().scan(
+        ScanContext(server_label="x", source_files=[src], root=tmp_path))
+    assert findings and str(findings[0].severity) == "MEDIUM"
+    assert "JSON.stringify" in findings[0].evidence
 
 
 def test_command_injection_quiet_on_clean_ts(tmp_path):
@@ -232,6 +263,45 @@ def test_context_oversharing_quiet_on_scoped_tool():
     tools = [ToolInfo(name="add", description="Add two integers and return the sum.")]
     ctx = ScanContext(server_label="clean", tools=tools)
     assert ContextOversharingDetector().scan(ctx) == []
+
+
+def test_grade_caps_hygiene_and_floors_no_severe():
+    from mcp_audit.report import grade
+
+    lows = [Finding(id=f"L{i}", title="t", severity=Severity.LOW, owasp_id="MCP04",
+                    confidence=Confidence.MEDIUM, location=str(i), evidence="e",
+                    recommendation="r") for i in range(50)]
+    letter, score = grade(lows)
+    assert score == 90 and letter == "A"  # 50 lows cap at -10: volume cannot tank the grade
+
+    meds = [Finding(id=f"M{i}", title="t", severity=Severity.MEDIUM, owasp_id="MCP04",
+                    confidence=Confidence.MEDIUM, location=str(i), evidence="e",
+                    recommendation="r") for i in range(10)] + lows
+    letter, score = grade(meds)
+    assert score == 70 and letter == "C"  # capped meds + floor: no-severe never below C
+
+    highs = [Finding(id="H", title="t", severity=Severity.HIGH, owasp_id="MCP05",
+                     confidence=Confidence.MEDIUM, location="x", evidence="e",
+                     recommendation="r")]
+    letter, score = grade(highs * 3)
+    assert score == 55 and letter == "F"  # severe findings stay uncapped
+
+
+def test_supply_chain_workspace_lockfile_covers_children(tmp_path):
+    # Monorepo: root lockfile, child package with loose deps and no own lockfile.
+    (tmp_path / "pnpm-lock.yaml").write_text("lockfileVersion: 9\n", encoding="utf-8")
+    child = tmp_path / "examples" / "demo"
+    child.mkdir(parents=True)
+    pkg = child / "package.json"
+    pkg.write_text(json.dumps({"dependencies": {"left-pad": "*", "agents": "workspace:*"}}),
+                   encoding="utf-8")
+    ctx = ScanContext(server_label="x", config_files=[pkg], root=tmp_path)
+    findings = SupplyChainDetector().scan(ctx)
+    ids = _ids(findings)
+    assert "MCP-AUDIT-D4-NO-LOCKFILE" not in ids       # root lockfile covers the child
+    unpinned = [f for f in findings if f.id == "MCP-AUDIT-D4-UNPINNED"]
+    assert len(unpinned) == 1                          # workspace:* skipped entirely
+    assert str(unpinned[0].severity) == "INFO"         # '*' demoted: lockfile pins it today
 
 
 def test_coverage_claims_are_honest():
