@@ -82,6 +82,9 @@ def scan(
     git: str = typer.Option(None, help="Git URL to shallow-clone and scan."),
     json_out: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
     report: str = typer.Option(None, help="Write a markdown report to this path."),
+    sarif: str = typer.Option(None, help="Write a SARIF 2.1.0 file (GitHub Code Scanning) to this path."),
+    html: str = typer.Option(None, help="Write a self-contained HTML report to this path."),
+    exclude: list[str] = typer.Option(None, "--exclude", help="Skip files whose path contains this substring (repeatable)."),
     fail_on: str = typer.Option("none", help="Exit non-zero at/above this severity: none|low|medium|high|critical."),
     llm: bool = typer.Option(False, "--llm", help="Add a local LLM second opinion (Ollama). Off by default."),
     cloud: bool = typer.Option(False, "--cloud", help="Use a hosted model for --llm. Snippets leave your machine (loud)."),
@@ -93,6 +96,11 @@ def scan(
         raise typer.Exit(2)
 
     ctx = _gather(source, stdio, http, git)
+    if exclude:
+        ctx.source_files = [p for p in ctx.source_files
+                            if not any(x in str(p) for x in exclude)]
+        ctx.config_files = [p for p in ctx.config_files
+                            if not any(x in str(p) for x in exclude)]
     findings = _run_detectors(ctx)
 
     from .allowlist import load_allowlist
@@ -117,6 +125,15 @@ def scan(
                                 encoding="utf-8")
         if not json_out:
             typer.echo(f"\nReport written to {report}")
+    if sarif:
+        Path(sarif).write_text(rep.to_sarif(findings, ctx.server_label), encoding="utf-8")
+        if not json_out:
+            typer.echo(f"SARIF written to {sarif}")
+    if html:
+        Path(html).write_text(rep.to_html(findings, ctx.server_label, suppressed),
+                              encoding="utf-8")
+        if not json_out:
+            typer.echo(f"HTML report written to {html}")
 
     thresholds = {"none": None, "low": Severity.LOW, "medium": Severity.MEDIUM,
                   "high": Severity.HIGH, "critical": Severity.CRITICAL}
@@ -172,6 +189,92 @@ def diff(stdio: str = typer.Option(None), http: str = typer.Option(None)):
     for n in removed:
         typer.echo(f"REMOVED: {n}")
     raise typer.Exit(1)
+
+
+@app.command()
+def inspect(
+    stdio: str = typer.Option(None, help="Spawn a stdio server, e.g. 'python server.py'."),
+    http: str = typer.Option(None, help="Streamable-HTTP server URL."),
+):
+    """Dump a server's declared tool surface as JSON. Introspection only, no scanning."""
+    if not (stdio or http):
+        typer.echo("Provide --stdio or --http.", err=True)
+        raise typer.Exit(2)
+    ctx = _gather(None, stdio, http, None)
+    typer.echo(json.dumps(
+        [{"name": t.name, "description": t.description, "input_schema": t.input_schema}
+         for t in ctx.tools], indent=2))
+
+
+@app.command()
+def corpus(
+    targets: str = typer.Argument(..., help="File listing one target per line: a local path or a git URL. '#' starts a comment."),
+    out: str = typer.Option(None, help="Write an aggregate markdown table to this path."),
+    json_out: bool = typer.Option(False, "--json", help="Emit aggregate JSON to stdout."),
+):
+    """Scan many servers and aggregate the results into one table.
+
+    This is the methodology behind published mcp-audit reports, reproducible in one command.
+    """
+    from collections import Counter
+
+    from . import report as rep
+    from .allowlist import load_allowlist
+
+    lines = Path(targets).read_text(encoding="utf-8").splitlines()
+    entries = [ln.strip() for ln in lines if ln.strip() and not ln.strip().startswith("#")]
+    if not entries:
+        typer.echo("No targets in file.", err=True)
+        raise typer.Exit(2)
+
+    rows: list[dict] = []
+    for target in entries:
+        is_git = target.startswith(("http://", "https://", "git@"))
+        try:
+            ctx = _gather(None if is_git else target, None, None, target if is_git else None)
+            findings = _run_detectors(ctx)
+            allow_set = load_allowlist(ctx.root)
+            if allow_set:
+                findings = [f for f in findings if f.fingerprint() not in allow_set]
+            counts = Counter(str(f.severity) for f in findings)
+            letter, score = rep.grade(findings)
+            rows.append({"target": target, "error": None, "grade": letter, "score": score,
+                         "total": len(findings),
+                         "critical": counts.get("CRITICAL", 0), "high": counts.get("HIGH", 0),
+                         "medium": counts.get("MEDIUM", 0), "low": counts.get("LOW", 0),
+                         "info": counts.get("INFO", 0)})
+            typer.echo(f"OK    {target}  grade {letter} ({score})  {len(findings)} findings", err=True)
+        except Exception as exc:  # keep going; one bad target should not sink the run
+            rows.append({"target": target, "error": str(exc), "grade": None, "score": None,
+                         "total": 0, "critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0})
+            typer.echo(f"ERROR {target}: {exc}", err=True)
+
+    ok = [r for r in rows if not r["error"]]
+    agg = {k: sum(r[k] for r in ok) for k in ("total", "critical", "high", "medium", "low", "info")}
+
+    md = ["# mcp-audit corpus results", "",
+          f"Scanned {len(ok)} of {len(rows)} targets. Aggregate: "
+          f"{agg['critical']} critical, {agg['high']} high, {agg['medium']} medium, "
+          f"{agg['low']} low, {agg['info']} info.", "",
+          "| Target | Grade | Total | Crit | High | Med | Low | Info |", "|---|---|---|---|---|---|---|---|"]
+    for r in sorted(rows, key=lambda r: (r["score"] is None, r["score"] or 0)):
+        if r["error"]:
+            md.append(f"| {r['target']} | error | - | - | - | - | - | - |")
+        else:
+            md.append(f"| {r['target']} | {r['grade']} ({r['score']}) | {r['total']} | "
+                      f"{r['critical']} | {r['high']} | {r['medium']} | {r['low']} | {r['info']} |")
+    md_text = "\n".join(md) + "\n"
+
+    if json_out:
+        typer.echo(json.dumps({"targets": rows, "aggregate": agg}, indent=2))
+    else:
+        typer.echo(md_text)
+    if out:
+        Path(out).write_text(md_text, encoding="utf-8")
+        typer.echo(f"Corpus table written to {out}", err=True)
+
+    if any(r["critical"] or r["high"] for r in ok):
+        raise typer.Exit(1)
 
 
 @app.command()
