@@ -1,6 +1,6 @@
 [project]
 name = "mcp-audit"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local-first, pre-install security auditor for MCP servers. Scan before you trust."
 readme = "README.md"
 requires-python = ">=3.11"

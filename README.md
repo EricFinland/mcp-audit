@@ -4,7 +4,7 @@
 > Context Protocol: tool poisoning, hardcoded secrets, command injection, and supply-chain
 > risks, mapped to the OWASP MCP Top 10. **Nothing leaves your machine.**
 
-[![PyPI](https://img.shields.io/badge/pypi-mcp--audit-blue)](#) · MIT · Python 3.11+
+[![tests](https://github.com/EricFinland/mcp-audit/actions/workflows/tests.yml/badge.svg)](https://github.com/EricFinland/mcp-audit/actions/workflows/tests.yml) · [![PyPI](https://img.shields.io/badge/pypi-mcp--audit-blue)](#) · MIT · Python 3.11+
 
 ---
 
@@ -38,6 +38,16 @@ pip install mcp-audit
 mcp-audit scan ./path/to/server --report report.md
 mcp-audit scan --git https://github.com/owner/repo
 
+# Other output formats: SARIF for GitHub Code Scanning, or a shareable HTML report
+mcp-audit scan ./server --sarif scan.sarif
+mcp-audit scan ./server --html report.html
+
+# Scan a whole corpus (one target per line: local paths or git URLs), aggregate one table
+mcp-audit corpus targets.txt --out corpus.md
+
+# Just dump a server's declared tool surface (no scanning)
+mcp-audit inspect --stdio "python server.py"
+
 # Introspect a running / spawnable server's tool surface (introspection only, never calls tools)
 mcp-audit scan --stdio "python server.py" --json
 mcp-audit scan --http http://localhost:8000/mcp
@@ -67,14 +77,15 @@ mcp-audit scan ./fixtures        # source-level scan (catches the command-inject
 
 Seven detectors. Every finding carries an OWASP MCP Top 10 id, a severity, a confidence level,
 and a stable fingerprint you can whitelist (`mcp-audit allow <fingerprint>`) when it is a false
-positive. See [`sample_report.md`](sample_report.md) for real output against the bundled fixtures.
+positive. Every scan gets a letter grade (A-F) you can gate CI on. See
+[`sample_report.md`](sample_report.md) for real output against the bundled fixtures.
 
 | OWASP | Risk | Coverage |
 |---|---|---|
 | MCP03 | Tool Poisoning | ✅ full |
 | MCP04 | Supply Chain / Dependency Tampering | 🟡 partial (hygiene) |
 | MCP01 | Token Mismanagement / Secret Exposure | 🟡 partial |
-| MCP05 | Command Injection | 🟡 partial (AST) |
+| MCP05 | Command Injection | 🟡 partial (Python AST + JS/TS heuristics) |
 | MCP06 | Intent Flow Subversion | 🟡 partial |
 | MCP09 | Shadow MCP Servers | 🟡 partial |
 | MCP10 | Context Over-Sharing | 🟡 partial |
@@ -90,8 +101,9 @@ proxy and an identity gateway for defense in depth. Honesty about coverage is a 
 
 ## Status
 
-Early and under active development. Detectors are v0 heuristics with per-finding confidence
-levels; tune the HIGH bar conservatively before pointing it at servers you don't control.
+Under active development; see [`CHANGELOG.md`](CHANGELOG.md). Detectors are heuristics with
+per-finding confidence levels and false-positive controls (placeholder filtering, test-path
+demotion, fingerprint allowlisting); the HIGH bar is deliberately conservative.
 
 ## License
 

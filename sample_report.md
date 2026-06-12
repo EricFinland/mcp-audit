@@ -1,6 +1,6 @@
 # mcp-audit report: `./fixtures`
 
-**19 findings** (CRITICAL: 2, HIGH: 6, MEDIUM: 6, LOW: 3)
+**Grade: F (0/100)** · **21 findings** (CRITICAL: 2, HIGH: 8, MEDIUM: 6, LOW: 3)
 
 ## Findings
 
@@ -11,6 +11,8 @@
 | HIGH | MCP03 | Tool description references sensitive files | `./fixtures :: tool 'add' (description)` | high |
 | HIGH | MCP03 | Instructions hidden in HTML/markdown comment | `./fixtures :: tool 'add' (description)` | high |
 | HIGH | MCP05 | Possible command injection sink | `fixtures\evil_server.py:44` | medium |
+| HIGH | MCP05 | Possible command injection sink | `fixtures\evil_tool.ts:8` | medium |
+| HIGH | MCP05 | Possible command injection sink | `fixtures\evil_tool.ts:11` | medium |
 | HIGH | MCP04 | npm 'postinstall' script fetches/executes from the network | `fixtures\evil_pkg\package.json :: scripts.postinstall` | high |
 | HIGH | MCP06 | Attempt to override the system prompt or instructions | `./fixtures :: tool 'search' (description)` | medium |
 | HIGH | MCP06 | Attempt to override the system prompt or instructions | `./fixtures :: tool 'summarize' (description)` | medium |
@@ -57,6 +59,18 @@
 - **Evidence:** `os.system() with a dynamically built command`
 - **Fix:** Never build shell commands from untrusted/tool input. Use a parameterized argv list, avoid shell=True, and validate inputs.
 - **Fingerprint:** `5273539b9d5c` (false positive? `mcp-audit allow 5273539b9d5c`)
+
+#### HIGH · MCP05: Command Injection & Execution · Possible command injection sink
+- **Where:** `fixtures\evil_tool.ts:8`
+- **Evidence:** `execSync() with a dynamically built command`
+- **Fix:** Never build shell commands from untrusted/tool input. Use execFile/spawn with an argv array, avoid shell:true, and validate inputs.
+- **Fingerprint:** `64bd2ae50471` (false positive? `mcp-audit allow 64bd2ae50471`)
+
+#### HIGH · MCP05: Command Injection & Execution · Possible command injection sink
+- **Where:** `fixtures\evil_tool.ts:11`
+- **Evidence:** `exec() with a dynamically built command`
+- **Fix:** Never build shell commands from untrusted/tool input. Use execFile/spawn with an argv array, avoid shell:true, and validate inputs.
+- **Fingerprint:** `662ffe9803c5` (false positive? `mcp-audit allow 662ffe9803c5`)
 
 #### HIGH · MCP04: Software Supply Chain Attacks & Dependency Tampering · npm 'postinstall' script fetches/executes from the network
 - **Where:** `fixtures\evil_pkg\package.json :: scripts.postinstall`
